@@ -57,6 +57,32 @@ bool ConvertToSWF(UIScreenChunk* screen, const qString& filename)
     return 1;
 }
 
+int DetermineFileType(void* data, s64 size)
+{
+    if (size >= sizeof(UIScreenChunk))
+    {
+        auto chunk = static_cast<qChunk*>(data);
+        auto screen = static_cast<UIScreenChunk*>(chunk->GetData());
+        if (chunk->mUID == ChunkUID_UIScreen && screen->mTypeUID == RTypeUID_UIScreen) {
+            return 0;
+        }
+    }
+
+    if (size > 3)
+    {
+        auto f = static_cast<u8*>(data);
+        if ((f[0] == 'S' && f[1] == 'F' && f[2] == 'X') ||
+            (f[0] == 'C' && f[1] == 'F' && f[2] == 'X') ||
+            (f[0] == 'C' && f[1] == 'W' && f[2] == 'S') ||
+            (f[0] == 'G' && f[1] == 'F' && f[2] == 'X'))
+        {
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
 int main(int argc, char** argv)
 {
     qInit(0);
@@ -92,25 +118,18 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    bool isSWF = (qStringHashUpper32(ext) == qStringHashUpper32(".swf"));
+    int fileType = DetermineFileType(fileData, fileSize);
+    if (fileType == -1)
+    {
+        qPrintf("Error: Loaded file that is not valid SWF or UIScreen!\n");
+        return 1;
+    }
+
+    const bool isSWF = (fileType == 1);
     outname = outname.ReplaceExtension(isSWF ? ".bin" : ".swf");
 
     if (isSWF)
     {
-        auto f = static_cast<u8*>(fileData);
-        bool validSWF = fileSize > 3 && (
-            (f[0] == 'S' && f[1] == 'F' && f[2] == 'X') ||
-            (f[0] == 'C' && f[1] == 'F' && f[2] == 'X') ||
-            (f[0] == 'C' && f[1] == 'W' && f[2] == 'S') ||
-            (f[0] == 'G' && f[1] == 'F' && f[2] == 'X')
-        );
-
-        if (!validSWF)
-        {
-            qPrintf("Error: File is not a valid SWF!\n");
-            return 1;
-        }
-
         if (!ConvertToBin(fileData, fileSize, outname))
         {
             qPrintf("Error: Failed to convert SWF to UIScreen!\n");
@@ -121,11 +140,6 @@ int main(int argc, char** argv)
     {
         auto chunk = static_cast<qChunk*>(fileData);
         auto screen = static_cast<UIScreenChunk*>(chunk->GetData());
-        if (chunk->mUID != ChunkUID_UIScreen || screen->mTypeUID != RTypeUID_UIScreen)
-        {
-            qPrintf("Error: Loaded binary file is not UIScreen!\n");
-            return 1;
-        }
 
         if (!ConvertToSWF(screen, outname))
         {
